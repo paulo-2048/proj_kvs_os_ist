@@ -1,0 +1,14 @@
+{
+  "makefile.launchConfigurations": [
+    {
+      "cwd": "/home/paulo-vitor/ist/os/projeto/proj_24-25-p1_base_v1.1/proj_24-25-p1_base",
+      "binaryPath": "/home/paulo-vitor/ist/os/projeto/proj_24-25-p1_base_v1.1/proj_24-25-p1_base/kvs",
+      "binaryArgs": []
+    }
+  ],
+  "files.associations": {
+    "stdlib.h": "c",
+    "constants.h": "c",
+    "operations.h": "c"
+  }
+}
