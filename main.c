@@ -10,7 +10,19 @@
 #include "parser.h"
 #include "operations.h"
 
-int executeCommand(char *command)
+char *generateOutFilename(char *filename, char *outFilename)
+{
+  size_t len = strlen(filename);
+  strcpy(outFilename, filename);
+  outFilename[len - 4] = '\0';
+  strcat(outFilename, ".out");
+
+  return outFilename;
+}
+
+
+
+int executeCommand(char *command, int fdOut)
 {
   char keys[MAX_WRITE_SIZE][MAX_STRING_SIZE] = {0};
   char values[MAX_WRITE_SIZE][MAX_STRING_SIZE] = {0};
@@ -33,7 +45,7 @@ int executeCommand(char *command)
   // Write command to temp file
   write(fdTempFile, command, strlen(command));
   write(fdTempFile, "\n", 1);
-  lseek(fdTempFile, 0, SEEK_SET); // Reset file pointer to beginning
+  lseek(fdTempFile, 0, SEEK_SET);
 
   switch (get_next(fdTempFile))
   {
@@ -92,7 +104,7 @@ int executeCommand(char *command)
 
     if (delay > 0)
     {
-      printf("Waiting...\n");
+      // fprintf("Waiting...\n");
       kvs_wait(delay);
     }
     break;
@@ -131,24 +143,39 @@ int executeCommand(char *command)
   }
 
   close(fdTempFile);
+  close(fdOut);
   unlink(temp_filename);
 
   return 0;
 }
 
+
 int readLine(char *filePath)
 {
   int fd;
+  int fdOut;
   ssize_t bytesRead;
   char buffer[MAX_LINE_LENGTH];
   char line[MAX_LINE_LENGTH];
   int lineIndex = 0;
 
-  // Open the file using system call
+  // Open the input file using system call
   fd = open(filePath, O_RDONLY);
   if (fd == -1)
   {
     printf("Error opening file %s\n", filePath);
+    return -1;
+  }
+
+  // Generate output filename
+  size_t len = strlen(filePath);
+  char outFilename[len + 1];
+  generateOutFilename(filePath, outFilename);
+
+  fdOut = open(outFilename, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
+  if (fdOut == -1)
+  {
+    printf("Error creating file %s\n", outFilename);
     return -1;
   }
 
@@ -168,7 +195,7 @@ int readLine(char *filePath)
         if (lineIndex > 0 && line[0] != '#')
         {
           // printf("Processing line: %s\n", line);
-          executeCommand(line);
+          executeCommand(line, fdOut);
         }
 
         // Reset line buffer
@@ -195,7 +222,7 @@ int readLine(char *filePath)
   {
     line[lineIndex] = '\0';
     // printf("Processing line: %s\n", line);
-    executeCommand(line);
+    // executeCommand(line);
   }
 
   // Close file descriptor

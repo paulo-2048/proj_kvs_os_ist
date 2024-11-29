@@ -9,6 +9,7 @@
   "files.associations": {
     "stdlib.h": "c",
     "constants.h": "c",
-    "operations.h": "c"
+    "operations.h": "c",
+    "parser.h": "c"
   }
 }
