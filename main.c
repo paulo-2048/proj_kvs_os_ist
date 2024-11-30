@@ -235,8 +235,14 @@ int readLine(char *filePath)
   return 0;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+
+  if (argc != 2)
+  {
+    fprintf(stderr, "Usage: %s <job_directory>", argv[0]);
+    return 1;
+  }
 
   if (kvs_init())
   {
@@ -244,26 +250,14 @@ int main()
     return 1;
   }
 
-  // Open folder
-  int err = 0;
-  char folderPath[32];
-
-  DIR *dirp;
-  struct dirent *dp;
-  do
+  DIR *dirp = opendir(argv[1]);
+  if (dirp == NULL)
   {
-    if (err != 0)
-    {
-      printf("Error opening folder, try again\n");
-    }
+    perror("Error opening job directory");
+    return 1;
+  }
 
-    printf("Jobs Folder > ");
-    scanf("%s", folderPath);
-
-    dirp = opendir(folderPath);
-    err = -1;
-  } while (dirp == NULL);
-
+  struct dirent *dp;
   for (;;)
   {
     dp = readdir(dirp);
@@ -272,10 +266,10 @@ int main()
     if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0 || strstr(dp->d_name, ".out") != NULL)
       continue; /* Skip . and .. */
 
-    char filePath[64];
-    strcpy(filePath, folderPath);
+    // Construct full path to the job file
+    char filePath[PATH_MAX];
+    snprintf(filePath, sizeof(filePath), "%s/%s", argv[1], dp->d_name);
 
-    strcat(filePath, dp->d_name);
     readLine(filePath);
   }
 
