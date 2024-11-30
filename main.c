@@ -69,7 +69,7 @@ int executeCommand(char *command, int fdOut)
       fprintf(stderr, "Invalid command. See HELP for usage\n");
     }
 
-    if (kvs_read(num_pairs, keys))
+    if (kvs_read(num_pairs, keys, fdOut))
     {
       fprintf(stderr, "Failed to read pair\n");
     }
@@ -83,7 +83,7 @@ int executeCommand(char *command, int fdOut)
       fprintf(stderr, "Invalid command. See HELP for usage\n");
     }
 
-    if (kvs_delete(num_pairs, keys))
+    if (kvs_delete(num_pairs, keys, fdOut))
     {
       fprintf(stderr, "Failed to delete pair\n");
     }
@@ -91,7 +91,7 @@ int executeCommand(char *command, int fdOut)
 
   case CMD_SHOW:
 
-    kvs_show();
+    kvs_show(fdOut);
     break;
 
   case CMD_WAIT:
@@ -141,7 +141,6 @@ int executeCommand(char *command, int fdOut)
   }
 
   close(fdTempFile);
-  close(fdOut);
   unlink(temp_filename);
 
   return 0;
@@ -231,6 +230,8 @@ int readLine(char *filePath)
 
   printf("\n");
 
+  close(fdOut);
+
   return 0;
 }
 
@@ -268,7 +269,7 @@ int main()
     dp = readdir(dirp);
     if (dp == NULL)
       break;
-    if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+    if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0 || strstr(dp->d_name, ".out") != NULL)
       continue; /* Skip . and .. */
 
     char filePath[64];
