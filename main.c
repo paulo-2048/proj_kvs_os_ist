@@ -20,8 +20,6 @@ char *generateOutFilename(char *filename, char *outFilename)
   return outFilename;
 }
 
-
-
 int executeCommand(char *command, int fdOut)
 {
   char keys[MAX_WRITE_SIZE][MAX_STRING_SIZE] = {0};
@@ -149,7 +147,6 @@ int executeCommand(char *command, int fdOut)
   return 0;
 }
 
-
 int readLine(char *filePath)
 {
   int fd;
@@ -222,7 +219,7 @@ int readLine(char *filePath)
   {
     line[lineIndex] = '\0';
     // printf("Processing line: %s\n", line);
-    // executeCommand(line);
+    executeCommand(line, fdOut);
   }
 
   // Close file descriptor
