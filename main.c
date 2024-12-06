@@ -5,10 +5,76 @@
 #include <dirent.h>
 #include <string.h>
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "constants.h"
 #include "parser.h"
 #include "operations.h"
+
+int MAX_CONCURRENT_BACKUPS;
+
+int checkCurrentBackups()
+{
+  char backupRegister[] = "register.bck";
+
+  int fd = open(backupRegister, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  // read and check if the number in file  is less than maxBackups
+
+  int numBackups = 0;
+  char buffer[10];
+  read(fd, buffer, 10);
+  numBackups = atoi(buffer);
+  close(fd);
+
+  if (numBackups < MAX_CONCURRENT_BACKUPS)
+  {
+    return 1;
+  }
+  return 0;
+}
+
+int increementCurrentBackups()
+{
+  char backupRegister[] = "register.bck";
+
+  int fd = open(backupRegister, O_RDWR);
+  // read and check if the number in file  is less than maxBackups
+
+  int numBackups = 0;
+  char buffer[10];
+  read(fd, buffer, 10);
+  numBackups = atoi(buffer);
+  close(fd);
+
+  numBackups++;
+
+  fd = open(backupRegister, O_WRONLY | O_TRUNC);
+  sprintf(buffer, "%d", numBackups);
+  write(fd, buffer, strlen(buffer));
+  close(fd);
+
+  return 0;
+}
+
+int decreementCurrentBackups()
+{
+  char backupRegister[] = "register.bck";
+  int fd = open(backupRegister, O_RDWR);
+  // read and check if the number in file  is less than maxBackups
+  int numBackups = 0;
+  char buffer[10];
+  read(fd, buffer, 10);
+  numBackups = atoi(buffer);
+  close(fd);
+  numBackups--;
+  fd = open(backupRegister, O_WRONLY | O_TRUNC);
+  sprintf(buffer, "%d", numBackups);
+  write(fd, buffer, strlen(buffer));
+  close(fd);
+  return 0;
+}
 
 char *generateOutFilename(char *filename, char *outFilename)
 {
@@ -20,7 +86,7 @@ char *generateOutFilename(char *filename, char *outFilename)
   return outFilename;
 }
 
-int executeCommand(char *command, int fdOut)
+int executeCommand(char *command, int fdOut, int fdIn, char *inputFilename)
 {
   char keys[MAX_WRITE_SIZE][MAX_STRING_SIZE] = {0};
   char values[MAX_WRITE_SIZE][MAX_STRING_SIZE] = {0};
@@ -108,10 +174,61 @@ int executeCommand(char *command, int fdOut)
     break;
 
   case CMD_BACKUP:
+    // printf("Waiting for backup mutex...\n");
+    // while (concurrent_backups >= MAX_CONCURRENT_BACKUPS)
+    // {
+    //   printf("Maximum concurrent backups reached. Waiting for a backup slot...\n");
+    //   sleep(1); // Wait for 1 second before checking again
+    // }
 
-    if (kvs_backup())
+    // Wait for an available backup slot
+    // sem_wait(&backup_semaphore);
+
+    // pthread_mutex_lock(&backup_mutex);
+    // concurrent_backups++;
+    // pthread_mutex_unlock(&backup_mutex);
+
+    printf("Backup mutex acquired.\n");
+
+    while (checkCurrentBackups() == 0)
     {
-      fprintf(stderr, "Failed to perform backup.\n");
+      printf("Maximum concurrent backups reached. Waiting for a backup slot...\n");
+      sleep(1); // Wait for 1 second before checking again
+    }
+
+    int pid = fork();
+    if (pid == 0) // Child process
+    {
+      printf("Performing backup...\n");
+      increementCurrentBackups();
+
+      // Perform backup
+      int backup_result = kvs_backup(fdIn, inputFilename);
+
+      if (backup_result != 0)
+      {
+        fprintf(stderr, "Failed to perform backup.\n");
+        exit(1);
+      }
+
+      // sem_post(&backup_semaphore); // Release semaphore for completed child
+      decreementCurrentBackups();
+      printf("Backup completed.\n");
+      exit(0);
+    }
+    else if (pid > 0) // Parent process
+    {
+      // Wait for child process to complete
+      // int status;
+      // pid = wait(&status);
+
+      // sem_post(&backup_semaphore); // Release semaphore for completed child
+    }
+    else
+    {
+      // Fork failed
+      perror("Fork failed");
+      // sem_post(&backup_semaphore);
     }
     break;
 
@@ -175,7 +292,7 @@ int readLine(char *filePath)
     return -1;
   }
 
-  printf("Executing command: %s\n", filePath);
+  printf("Executing file: %s\n", filePath);
 
   while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0)
   {
@@ -191,7 +308,7 @@ int readLine(char *filePath)
         if (lineIndex > 0 && line[0] != '#')
         {
           // printf("Processing line: %s\n", line);
-          executeCommand(line, fdOut);
+          executeCommand(line, fdOut, fd, filePath);
         }
 
         // Reset line buffer
@@ -218,7 +335,7 @@ int readLine(char *filePath)
   {
     line[lineIndex] = '\0';
     // printf("Processing line: %s\n", line);
-    executeCommand(line, fdOut);
+    executeCommand(line, fdOut, fd, filePath);
   }
 
   // Close file descriptor
@@ -238,9 +355,9 @@ int readLine(char *filePath)
 int main(int argc, char *argv[])
 {
 
-  if (argc != 2)
+  if (argc != 3)
   {
-    fprintf(stderr, "Usage: %s <job_directory>", argv[0]);
+    fprintf(stderr, "Usage: %s [job_directory] [concurrent_backups]", argv[0]);
     return 1;
   }
 
@@ -249,6 +366,12 @@ int main(int argc, char *argv[])
     printf("Failed to initialize KVS\n");
     return 1;
   }
+
+  MAX_CONCURRENT_BACKUPS = atoi(argv[2]);
+  printf("Max Concurrent backups: %d\n", MAX_CONCURRENT_BACKUPS);
+
+  // int backup_semaphore_value = 0;
+  // sem_init(&backup_semaphore, 0, (unsigned int)MAX_CONCURRENT_BACKUPS);
 
   DIR *dirp = opendir(argv[1]);
   if (dirp == NULL)
@@ -263,7 +386,7 @@ int main(int argc, char *argv[])
     dp = readdir(dirp);
     if (dp == NULL)
       break;
-    if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0 || strstr(dp->d_name, ".out") != NULL)
+    if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0 || strstr(dp->d_name, ".out") != NULL || strstr(dp->d_name, ".bck") != NULL)
       continue; /* Skip . and .. */
 
     // Construct full path to the job file
@@ -273,6 +396,7 @@ int main(int argc, char *argv[])
     readLine(filePath);
   }
 
+  // sem_destroy(&backup_semaphore);
   closedir(dirp);
   return 0;
 }

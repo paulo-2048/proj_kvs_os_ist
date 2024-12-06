@@ -3,6 +3,10 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
 
 #include "kvs.h"
 #include "constants.h"
@@ -148,8 +152,114 @@ void kvs_show(int fdOut)
   }
 }
 
-int kvs_backup()
+void generateBackup(int fdInput, char *bckFilename)
 {
+  int fdOutput = open(bckFilename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (fdOutput < 0)
+  {
+    perror("Failed to create backup file");
+    return;
+  }
+
+  size_t inputSize;
+
+  lseek(fdInput, 0, SEEK_END);
+  inputSize = (size_t)lseek(fdInput, 0, SEEK_CUR);
+  lseek(fdInput, 0, SEEK_SET);
+
+  char buffer[inputSize];
+  read(fdInput, buffer, inputSize);
+  write(fdOutput, buffer, inputSize);
+
+  close(fdOutput);
+}
+
+char *generateBCKFilename(char *filename, char *bckFilename)
+{
+  int counter = 1;
+  size_t len = strlen(filename);
+  strcpy(bckFilename, filename);
+  bckFilename[len - 4] = '\0'; // jobs/input
+
+  // * Get directory from input filename
+  /*  char folderName;
+    folderName = strtok(filename, "/");
+    while (folderName != NULL)
+    {
+      folderName = strtok(NULL, "/");
+    } */
+
+  char folderName[MAX_JOB_FILE_NAME_SIZE];
+  char inputFilename[MAX_JOB_FILE_NAME_SIZE];
+  strcpy(inputFilename, bckFilename);
+
+  strcpy(folderName, bckFilename);
+  char *slash = strrchr(folderName, '/');
+  if (slash != NULL)
+  {
+    strcpy(inputFilename, slash + 1);
+    *slash = '\0';
+  }
+  else
+  {
+    strcpy(folderName, ".");
+    strcpy(inputFilename, filename);
+  }
+
+  strcat(folderName, "/");
+
+  // * Read all files from directory
+  DIR *dp = opendir(folderName);
+  if (dp == NULL)
+  {
+    perror("Failed to open directory");
+    return NULL;
+  }
+
+  struct dirent *entry;
+  // * Check if exist backup with input name and counter
+  while ((entry = readdir(dp)) != NULL)
+  {
+    if (strstr(entry->d_name, inputFilename) != NULL && strstr(entry->d_name, ".bck") != NULL)
+    {
+      int fileCounter;
+      if (sscanf(entry->d_name + strlen(inputFilename) + 1, "%d", &fileCounter) == 1)
+      {
+        if (fileCounter >= counter)
+        {
+          counter = fileCounter + 1;
+        }
+      }
+    }
+  }
+
+  closedir(dp);
+  // input%-%.bkp (dp->d_name)
+  strcpy(bckFilename, folderName);    // jobs/
+  strcat(bckFilename, inputFilename); // jobs/input
+  strcat(bckFilename, "-");           // jobs/-
+
+  char counterStr[MAX_STRING_SIZE];
+  sprintf(counterStr, "%d", counter);
+  strcat(bckFilename, counterStr); // jobs/-1
+  strcat(bckFilename, ".bck");     // jobs/-1.bck
+
+  printf("Backup filename: %s\n", bckFilename);
+  return bckFilename;
+}
+
+int kvs_backup(int input_fd, char *input_filename)
+{
+  size_t len = strlen(input_filename);
+  char bckFilename[len + MAX_STRING_SIZE];
+  generateBCKFilename(input_filename, bckFilename);
+
+  printf("Init backup sleep\n");
+  sleep(5);
+  printf("End backup sleep\n");
+
+  generateBackup(input_fd, bckFilename);
+
   return 0;
 }
 
