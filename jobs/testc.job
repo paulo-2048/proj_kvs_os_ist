@@ -1,5 +1,8 @@
 READ [c1]
 WRITE [(c1,v1)(chave2,valor-exemplo)]
+WRITE [(c2,v2)(chave3,job-testc)]
+WRITE [(c3,v3)(chave4,modified-input)]
+WRITE [(c4,v4)(chave5,backup-test)]
 READ [chave2]
 WRITE [(chave2,valor-exemplo2)(umaChave,umValor)]
 BACKUP

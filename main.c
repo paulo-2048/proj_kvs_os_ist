@@ -8,73 +8,17 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+// #include <semaphore.h>
+#include <pthread.h>
 
 #include "constants.h"
 #include "parser.h"
 #include "operations.h"
 
 int MAX_CONCURRENT_BACKUPS;
+int concurrent_backups = 0;
 
-int checkCurrentBackups()
-{
-  char backupRegister[] = "register.bck";
-
-  int fd = open(backupRegister, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-  // read and check if the number in file  is less than maxBackups
-
-  int numBackups = 0;
-  char buffer[10];
-  read(fd, buffer, 10);
-  numBackups = atoi(buffer);
-  close(fd);
-
-  if (numBackups < MAX_CONCURRENT_BACKUPS)
-  {
-    return 1;
-  }
-  return 0;
-}
-
-int increementCurrentBackups()
-{
-  char backupRegister[] = "register.bck";
-
-  int fd = open(backupRegister, O_RDWR);
-  // read and check if the number in file  is less than maxBackups
-
-  int numBackups = 0;
-  char buffer[10];
-  read(fd, buffer, 10);
-  numBackups = atoi(buffer);
-  close(fd);
-
-  numBackups++;
-
-  fd = open(backupRegister, O_WRONLY | O_TRUNC);
-  sprintf(buffer, "%d", numBackups);
-  write(fd, buffer, strlen(buffer));
-  close(fd);
-
-  return 0;
-}
-
-int decreementCurrentBackups()
-{
-  char backupRegister[] = "register.bck";
-  int fd = open(backupRegister, O_RDWR);
-  // read and check if the number in file  is less than maxBackups
-  int numBackups = 0;
-  char buffer[10];
-  read(fd, buffer, 10);
-  numBackups = atoi(buffer);
-  close(fd);
-  numBackups--;
-  fd = open(backupRegister, O_WRONLY | O_TRUNC);
-  sprintf(buffer, "%d", numBackups);
-  write(fd, buffer, strlen(buffer));
-  close(fd);
-  return 0;
-}
+pthread_mutex_t backup_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 char *generateOutFilename(char *filename, char *outFilename)
 {
@@ -174,33 +118,24 @@ int executeCommand(char *command, int fdOut, int fdIn, char *inputFilename)
     break;
 
   case CMD_BACKUP:
-    // printf("Waiting for backup mutex...\n");
-    // while (concurrent_backups >= MAX_CONCURRENT_BACKUPS)
-    // {
-    //   printf("Maximum concurrent backups reached. Waiting for a backup slot...\n");
-    //   sleep(1); // Wait for 1 second before checking again
-    // }
 
-    // Wait for an available backup slot
-    // sem_wait(&backup_semaphore);
+    pthread_mutex_lock(&backup_mutex);
 
-    // pthread_mutex_lock(&backup_mutex);
-    // concurrent_backups++;
-    // pthread_mutex_unlock(&backup_mutex);
-
-    printf("Backup mutex acquired.\n");
-
-    while (checkCurrentBackups() == 0)
+    while (concurrent_backups >= MAX_CONCURRENT_BACKUPS)
     {
-      printf("Maximum concurrent backups reached. Waiting for a backup slot...\n");
-      sleep(1); // Wait for 1 second before checking again
+      int status;
+      printf("Waiting for one backup complete...\n");
+      wait(&status);
+      concurrent_backups--;
+      printf("Backup completed with status: %d\n", status);
     }
 
     int pid = fork();
     if (pid == 0) // Child process
     {
+      pthread_mutex_unlock(&backup_mutex);
+
       printf("Performing backup...\n");
-      increementCurrentBackups();
 
       // Perform backup
       int backup_result = kvs_backup(fdIn, inputFilename);
@@ -212,12 +147,14 @@ int executeCommand(char *command, int fdOut, int fdIn, char *inputFilename)
       }
 
       // sem_post(&backup_semaphore); // Release semaphore for completed child
-      decreementCurrentBackups();
       printf("Backup completed.\n");
       exit(0);
     }
     else if (pid > 0) // Parent process
     {
+      concurrent_backups++;
+      pthread_mutex_unlock(&backup_mutex);
+
       // Wait for child process to complete
       // int status;
       // pid = wait(&status);
@@ -355,9 +292,9 @@ int readLine(char *filePath)
 int main(int argc, char *argv[])
 {
 
-  if (argc != 3)
+  if (argc != 4)
   {
-    fprintf(stderr, "Usage: %s [job_directory] [concurrent_backups]", argv[0]);
+    fprintf(stderr, "Usage: %s [job_directory] [concurrent_backups] [concurrent_backups]\n", argv[0]);
     return 1;
   }
 
@@ -390,7 +327,7 @@ int main(int argc, char *argv[])
       continue; /* Skip . and .. */
 
     // Construct full path to the job file
-    char filePath[PATH_MAX];
+    char filePath[MAX_JOB_FILE_NAME_SIZE];
     snprintf(filePath, sizeof(filePath), "%s/%s", argv[1], dp->d_name);
 
     readLine(filePath);

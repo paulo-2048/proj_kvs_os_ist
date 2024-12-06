@@ -152,7 +152,7 @@ void kvs_show(int fdOut)
   }
 }
 
-void generateBackup(int fdInput, char *bckFilename)
+void generateBackup(char *bckFilename)
 {
   int fdOutput = open(bckFilename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fdOutput < 0)
@@ -161,16 +161,17 @@ void generateBackup(int fdInput, char *bckFilename)
     return;
   }
 
-  size_t inputSize;
+  // size_t inputSize;
 
-  lseek(fdInput, 0, SEEK_END);
-  inputSize = (size_t)lseek(fdInput, 0, SEEK_CUR);
-  lseek(fdInput, 0, SEEK_SET);
+  // lseek(fdInput, 0, SEEK_END);
+  // inputSize = (size_t)lseek(fdInput, 0, SEEK_CUR);
+  // lseek(fdInput, 0, SEEK_SET);
 
-  char buffer[inputSize];
-  read(fdInput, buffer, inputSize);
-  write(fdOutput, buffer, inputSize);
+  // char buffer[inputSize];
+  // read(fdInput, buffer, inputSize);
+  // write(fdOutput, buffer, inputSize);
 
+  kvs_show(fdOutput);
   close(fdOutput);
 }
 
@@ -253,12 +254,13 @@ int kvs_backup(int input_fd, char *input_filename)
   size_t len = strlen(input_filename);
   char bckFilename[len + MAX_STRING_SIZE];
   generateBCKFilename(input_filename, bckFilename);
+  printf("input_fd: %d\n", input_fd);
 
   printf("Init backup sleep\n");
   sleep(5);
   printf("End backup sleep\n");
 
-  generateBackup(input_fd, bckFilename);
+  generateBackup(bckFilename);
 
   return 0;
 }

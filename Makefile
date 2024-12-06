@@ -19,7 +19,7 @@ kvs: main.c constants.h operations.o parser.o kvs.o
 	$(CC) $(CFLAGS) -c ${@:.o=.c}
 
 run: kvs
-	@./kvs
+	@./kvs jobs 2 2
 
 clean:
 	find . -type f \( -name '*.o' -o -name 'kvs' -o -name '*.bck' -o -name '*.out' \) -delete
