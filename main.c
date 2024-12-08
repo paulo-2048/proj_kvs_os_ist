@@ -8,7 +8,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-// #include <semaphore.h>
+#include <semaphore.h>
 #include <pthread.h>
 
 #include "constants.h"
@@ -16,9 +16,13 @@
 #include "operations.h"
 
 int MAX_CONCURRENT_BACKUPS;
+int MAX_CONCURRENT_THREADS;
+
 int concurrent_backups = 0;
+int concurrent_threads = 0;
 
 pthread_mutex_t backup_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 char *generateOutFilename(char *filename, char *outFilename)
 {
@@ -289,6 +293,23 @@ int readLine(char *filePath)
   return 0;
 }
 
+void *read_line_thread(void *args)
+{
+
+  char *filePath = (char *)args;
+  pthread_mutex_lock(&thread_mutex);
+  concurrent_threads++;
+  pthread_mutex_unlock(&thread_mutex);
+
+  readLine(filePath);
+
+  pthread_mutex_lock(&thread_mutex);
+  concurrent_threads--;
+  pthread_mutex_unlock(&thread_mutex);
+
+  pthread_exit(NULL);
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -307,8 +328,10 @@ int main(int argc, char *argv[])
   MAX_CONCURRENT_BACKUPS = atoi(argv[2]);
   printf("Max Concurrent backups: %d\n", MAX_CONCURRENT_BACKUPS);
 
-  // int backup_semaphore_value = 0;
-  // sem_init(&backup_semaphore, 0, (unsigned int)MAX_CONCURRENT_BACKUPS);
+  MAX_CONCURRENT_THREADS = atoi(argv[3]);
+  printf("Max Concurrent threads: %d\n", MAX_CONCURRENT_THREADS);
+
+  pthread_t threads[MAX_CONCURRENT_THREADS];
 
   DIR *dirp = opendir(argv[1]);
   if (dirp == NULL)
@@ -326,11 +349,24 @@ int main(int argc, char *argv[])
     if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0 || strstr(dp->d_name, ".out") != NULL || strstr(dp->d_name, ".bck") != NULL)
       continue; /* Skip . and .. */
 
+    pthread_mutex_lock(&thread_mutex);
+
     // Construct full path to the job file
     char filePath[MAX_JOB_FILE_NAME_SIZE];
     snprintf(filePath, sizeof(filePath), "%s/%s", argv[1], dp->d_name);
 
-    readLine(filePath);
+    while (concurrent_threads >= MAX_CONCURRENT_THREADS)
+    {
+      pthread_join(threads[0], NULL);
+    }
+
+    pthread_create(&threads[concurrent_threads], NULL, read_line_thread, filePath);
+    pthread_mutex_unlock(&thread_mutex);
+  }
+
+  while (concurrent_threads > 0)
+  {
+    pthread_join(threads[0], NULL);
   }
 
   // sem_destroy(&backup_semaphore);
