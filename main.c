@@ -15,6 +15,7 @@
 #include "parser.h"
 #include "operations.h"
 
+char *folderName;
 int MAX_CONCURRENT_BACKUPS;
 int MAX_CONCURRENT_THREADS;
 
@@ -293,19 +294,38 @@ int readLine(char *filePath)
   return 0;
 }
 
-void *read_line_thread(void *args)
+void *read_line_thread(void *arg)
 {
+  struct dirent *dp;
 
-  char *filePath = (char *)args;
-  pthread_mutex_lock(&thread_mutex);
-  concurrent_threads++;
-  pthread_mutex_unlock(&thread_mutex);
+  DIR *dirp = arg;
 
-  readLine(filePath);
+  for (;;)
+  {
 
-  pthread_mutex_lock(&thread_mutex);
-  concurrent_threads--;
-  pthread_mutex_unlock(&thread_mutex);
+    pthread_mutex_lock(&thread_mutex);
+    dp = readdir(dirp);
+    pthread_mutex_unlock(&thread_mutex);
+
+    if (dp == NULL)
+      break;
+    if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0 || strstr(dp->d_name, ".out") != NULL || strstr(dp->d_name, ".bck") != NULL)
+      continue;
+
+    // Construct full path to the job file
+    char filePath[MAX_JOB_FILE_NAME_SIZE];
+    snprintf(filePath, sizeof(filePath), "%s/%s", folderName, dp->d_name);
+
+    pthread_mutex_lock(&thread_mutex);
+    concurrent_threads++;
+    pthread_mutex_unlock(&thread_mutex);
+
+    readLine(filePath);
+
+    pthread_mutex_lock(&thread_mutex);
+    concurrent_threads--;
+    pthread_mutex_unlock(&thread_mutex);
+  }
 
   pthread_exit(NULL);
 }
@@ -325,6 +345,9 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  folderName = argv[1];
+  printf("Folder name: %s\n", folderName);
+
   MAX_CONCURRENT_BACKUPS = atoi(argv[2]);
   printf("Max Concurrent backups: %d\n", MAX_CONCURRENT_BACKUPS);
 
@@ -340,33 +363,34 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  struct dirent *dp;
-  for (;;)
+  // TODO por o readdir dentro de funcao
+  // ligar MAX THREADS com essa func
+  // join a todas
+
+  for (int i = 0; i < MAX_CONCURRENT_THREADS; i++)
   {
-    dp = readdir(dirp);
-    if (dp == NULL)
-      break;
-    if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0 || strstr(dp->d_name, ".out") != NULL || strstr(dp->d_name, ".bck") != NULL)
-      continue; /* Skip . and .. */
-
-    pthread_mutex_lock(&thread_mutex);
-
-    // Construct full path to the job file
-    char filePath[MAX_JOB_FILE_NAME_SIZE];
-    snprintf(filePath, sizeof(filePath), "%s/%s", argv[1], dp->d_name);
-
-    while (concurrent_threads >= MAX_CONCURRENT_THREADS)
+    if (pthread_create(&threads[i], NULL, read_line_thread, dirp) != 0)
     {
-      pthread_join(threads[0], NULL);
+      perror("Failed to create thread");
+      break;
     }
-
-    pthread_create(&threads[concurrent_threads], NULL, read_line_thread, filePath);
-    pthread_mutex_unlock(&thread_mutex);
   }
 
-  while (concurrent_threads > 0)
+  // for (;;)
+  // {
+  //   while (concurrent_threads >= MAX_CONCURRENT_THREADS)
+  //   {
+  //     pthread_join(threads[0], NULL);
+  //   }
+
+  //   // pass dirp and argv[1] to thread
+  //   pthread_create(&threads[concurrent_threads], NULL, read_line_thread, dirp);
+  // }
+
+  // Wait for all threads to complete
+  for (int i = 0; i < MAX_CONCURRENT_THREADS; i++)
   {
-    pthread_join(threads[0], NULL);
+    pthread_join(threads[i], NULL);
   }
 
   // sem_destroy(&backup_semaphore);
