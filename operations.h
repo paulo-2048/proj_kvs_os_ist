@@ -40,8 +40,9 @@ void kvs_show(int fdOut);
 /// backup file
 /// @param fdIn File descriptor to read the input.
 /// @param inputFilename Name of the input file.
+/// @param dirp Directory pointer.
 /// @return 0 if the backup was successful, 1 otherwise.
-int kvs_backup(int fdIn, const char *inputFilename);
+int kvs_backup(int fdIn, const char *inputFilename, DIR *dirp);
 
 /// Waits for the last backup to be called.
 void kvs_wait_backup();

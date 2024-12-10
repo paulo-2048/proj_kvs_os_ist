@@ -25,6 +25,8 @@ int concurrent_threads = 0;
 pthread_mutex_t backup_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+DIR *dirp;
+
 char *generateOutFilename(char *filename, char *outFilename)
 {
   size_t len = strlen(filename);
@@ -143,7 +145,7 @@ int executeCommand(char *command, int fdOut, int fdIn, char *inputFilename)
       printf("Performing backup...\n");
 
       // Perform backup
-      int backup_result = kvs_backup(fdIn, inputFilename);
+      int backup_result = kvs_backup(fdIn, inputFilename, dirp);
 
       if (backup_result != 0)
       {
@@ -294,12 +296,9 @@ int readLine(char *filePath)
   return 0;
 }
 
-void *read_line_thread(void *arg)
+void *read_line_thread()
 {
   struct dirent *dp;
-
-  DIR *dirp = arg;
-
   for (;;)
   {
 
@@ -356,7 +355,7 @@ int main(int argc, char *argv[])
 
   pthread_t threads[MAX_CONCURRENT_THREADS];
 
-  DIR *dirp = opendir(argv[1]);
+  dirp = opendir(argv[1]);
   if (dirp == NULL)
   {
     perror("Error opening job directory");
@@ -369,7 +368,7 @@ int main(int argc, char *argv[])
 
   for (int i = 0; i < MAX_CONCURRENT_THREADS; i++)
   {
-    if (pthread_create(&threads[i], NULL, read_line_thread, dirp) != 0)
+    if (pthread_create(&threads[i], NULL, read_line_thread, NULL) != 0)
     {
       perror("Failed to create thread");
       break;
@@ -390,6 +389,7 @@ int main(int argc, char *argv[])
   // Wait for all threads to complete
   for (int i = 0; i < MAX_CONCURRENT_THREADS; i++)
   {
+    printf("Joining thread %d [in main]\n\n", i);
     pthread_join(threads[i], NULL);
   }
 

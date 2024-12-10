@@ -7,11 +7,15 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <pthread.h>
 
 #include "kvs.h"
 #include "constants.h"
 
 static struct HashTable *kvs_table = NULL;
+
+pthread_mutex_t thread_mutex_op_read = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t thread_mutex_op_write = PTHREAD_MUTEX_INITIALIZER;
 
 /// Calculates a timespec from a delay in milliseconds.
 /// @param delay_ms Delay in milliseconds.
@@ -55,10 +59,13 @@ int kvs_write(size_t num_pairs, char keys[][MAX_STRING_SIZE], char values[][MAX_
 
   for (size_t i = 0; i < num_pairs; i++)
   {
+    pthread_mutex_lock(&thread_mutex_op_write);
+
     if (write_pair(kvs_table, keys[i], values[i]) != 0)
     {
       fprintf(stderr, "Failed to write keypair (%s,%s)\n", keys[i], values[i]);
     }
+    pthread_mutex_unlock(&thread_mutex_op_write);
   }
 
   return 0;
@@ -76,6 +83,8 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
   write(fdOut, "[", 1);
   for (size_t i = 0; i < num_pairs; i++)
   {
+    pthread_mutex_lock(&thread_mutex_op_read);
+
     char *result = read_pair(kvs_table, keys[i]);
     if (result == NULL)
     {
@@ -94,6 +103,7 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
       write(fdOut, ")", 1);
     }
     free(result);
+    pthread_mutex_unlock(&thread_mutex_op_read);
   }
   // printf("]\n");
   write(fdOut, "]\n", 2);
@@ -175,7 +185,7 @@ void generateBackup(char *bckFilename)
   close(fdOutput);
 }
 
-char *generateBCKFilename(char *filename, char *bckFilename)
+char *generateBCKFilename(char *filename, char *bckFilename, DIR *dp)
 {
   int counter = 1;
   size_t len = strlen(filename);
@@ -210,7 +220,7 @@ char *generateBCKFilename(char *filename, char *bckFilename)
   strcat(folderName, "/");
 
   // * Read all files from directory
-  DIR *dp = opendir(folderName);
+  // DIR *dp = opendir(folderName);
   if (dp == NULL)
   {
     perror("Failed to open directory");
@@ -249,11 +259,11 @@ char *generateBCKFilename(char *filename, char *bckFilename)
   return bckFilename;
 }
 
-int kvs_backup(int input_fd, char *input_filename)
+int kvs_backup(int input_fd, char *input_filename, DIR *dp)
 {
   size_t len = strlen(input_filename);
   char bckFilename[len + MAX_STRING_SIZE];
-  generateBCKFilename(input_filename, bckFilename);
+  generateBCKFilename(input_filename, bckFilename, dp);
   printf("input_fd: %d\n", input_fd);
 
   printf("Init backup sleep\n");
