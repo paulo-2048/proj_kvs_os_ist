@@ -133,7 +133,7 @@ int executeCommand(int fdOut, int fdIn, char *inputFilename)
           exit(1);
         }
 
-        exit(0);
+        _exit(0);
       }
       else if (pid > 0)
       {
