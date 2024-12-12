@@ -14,12 +14,21 @@
 
 static struct HashTable *kvs_table = NULL;
 
-pthread_mutex_t thread_mutex_op_read = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t thread_mutex_op_write = PTHREAD_MUTEX_INITIALIZER;
+// pthread_mutex_t thread_mutex_op_read = PTHREAD_MUTEX_INITIALIZER;
+// pthread_mutex_t thread_mutex_op_write = PTHREAD_MUTEX_INITIALIZER;
 
-/// Calculates a timespec from a delay in milliseconds.
-/// @param delay_ms Delay in milliseconds.
-/// @return Timespec with the given delay.
+struct kvs_lock_write_t
+{
+  char key[MAX_STRING_SIZE];
+  pthread_mutex_t mutex;
+};
+
+struct kvs_lock_read_t
+{
+  char key[MAX_STRING_SIZE];
+  pthread_mutex_t mutex;
+};
+
 static struct timespec delay_to_timespec(unsigned int delay_ms)
 {
   return (struct timespec){delay_ms / 1000, (delay_ms % 1000) * 1000000};
@@ -57,16 +66,21 @@ int kvs_write(size_t num_pairs, char keys[][MAX_STRING_SIZE], char values[][MAX_
     return 1;
   }
 
+  struct kvs_lock_write_t kvs_lock_write;
+  pthread_mutex_init(&kvs_lock_write.mutex, NULL);
+
   for (size_t i = 0; i < num_pairs; i++)
   {
-    pthread_mutex_lock(&thread_mutex_op_write);
-
+    strcpy(kvs_lock_write.key, keys[i]);
+    pthread_mutex_lock(&kvs_lock_write.mutex);
     if (write_pair(kvs_table, keys[i], values[i]) != 0)
     {
       fprintf(stderr, "Failed to write keypair (%s,%s)\n", keys[i], values[i]);
     }
-    pthread_mutex_unlock(&thread_mutex_op_write);
+    pthread_mutex_unlock(&kvs_lock_write.mutex);
   }
+
+  pthread_mutex_destroy(&kvs_lock_write.mutex);
 
   return 0;
 }
@@ -79,23 +93,24 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
     return 1;
   }
 
-  // printf("[");
   write(fdOut, "[", 1);
+
   for (size_t i = 0; i < num_pairs; i++)
   {
-    pthread_mutex_lock(&thread_mutex_op_read);
 
+    struct kvs_lock_read_t kvs_lock_read;
+    strcpy(kvs_lock_read.key, keys[i]);
+    pthread_mutex_init(&kvs_lock_read.mutex, NULL);
+    pthread_mutex_lock(&kvs_lock_read.mutex);
     char *result = read_pair(kvs_table, keys[i]);
     if (result == NULL)
     {
-      // printf("(%s,KVSERROR)", keys[i]);
       write(fdOut, "(", 1);
       write(fdOut, keys[i], strlen(keys[i]));
       write(fdOut, ",KVSERROR)", 10);
     }
     else
     {
-      // printf("(%s,%s)", keys[i], result);
       write(fdOut, "(", 1);
       write(fdOut, keys[i], strlen(keys[i]));
       write(fdOut, ",", 1);
@@ -103,10 +118,12 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
       write(fdOut, ")", 1);
     }
     free(result);
-    pthread_mutex_unlock(&thread_mutex_op_read);
+    pthread_mutex_unlock(&kvs_lock_read.mutex);
+    pthread_mutex_destroy(&kvs_lock_read.mutex);
   }
-  // printf("]\n");
+
   write(fdOut, "]\n", 2);
+
   return 0;
 }
 
@@ -125,11 +142,11 @@ int kvs_delete(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
     {
       if (!aux)
       {
-        // printf("[");
+
         write(fdOut, "[", 1);
         aux = 1;
       }
-      // printf("(%s,KVSMISSING)", keys[i]);
+
       write(fdOut, "(", 1);
       write(fdOut, keys[i], strlen(keys[i]));
       write(fdOut, ",KVSMISSING)", 12);
@@ -137,7 +154,7 @@ int kvs_delete(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
   }
   if (aux)
   {
-    // printf("]\n");
+
     write(fdOut, "]\n", 2);
   }
 
@@ -151,13 +168,13 @@ void kvs_show(int fdOut)
     KeyNode *keyNode = kvs_table->table[i];
     while (keyNode != NULL)
     {
-      // printf("(%s, %s)\n", keyNode->key, keyNode->value);
+
       write(fdOut, "(", 1);
       write(fdOut, keyNode->key, strlen(keyNode->key));
-      write(fdOut, ",", 1);
+      write(fdOut, ", ", 2);
       write(fdOut, keyNode->value, strlen(keyNode->value));
       write(fdOut, ")\n", 2);
-      keyNode = keyNode->next; // Move to the next node
+      keyNode = keyNode->next;
     }
   }
 }
@@ -171,105 +188,53 @@ void generateBackup(char *bckFilename)
     return;
   }
 
-  // size_t inputSize;
-
-  // lseek(fdInput, 0, SEEK_END);
-  // inputSize = (size_t)lseek(fdInput, 0, SEEK_CUR);
-  // lseek(fdInput, 0, SEEK_SET);
-
-  // char buffer[inputSize];
-  // read(fdInput, buffer, inputSize);
-  // write(fdOutput, buffer, inputSize);
-
   kvs_show(fdOutput);
   close(fdOutput);
 }
-
-char *generateBCKFilename(char *filename, char *bckFilename, DIR *dp)
-{
-  int counter = 1;
-  size_t len = strlen(filename);
-  strcpy(bckFilename, filename);
-  bckFilename[len - 4] = '\0'; // jobs/input
-
-  // * Get directory from input filename
-  /*  char folderName;
-    folderName = strtok(filename, "/");
-    while (folderName != NULL)
-    {
-      folderName = strtok(NULL, "/");
-    } */
-
-  char folderName[MAX_JOB_FILE_NAME_SIZE];
-  char inputFilename[MAX_JOB_FILE_NAME_SIZE];
-  strcpy(inputFilename, bckFilename);
-
-  strcpy(folderName, bckFilename);
-  char *slash = strrchr(folderName, '/');
-  if (slash != NULL)
-  {
-    strcpy(inputFilename, slash + 1);
-    *slash = '\0';
-  }
-  else
-  {
-    strcpy(folderName, ".");
-    strcpy(inputFilename, filename);
-  }
-
-  strcat(folderName, "/");
-
-  // * Read all files from directory
-  // DIR *dp = opendir(folderName);
-  if (dp == NULL)
-  {
-    perror("Failed to open directory");
-    return NULL;
-  }
-
-  struct dirent *entry;
-  // * Check if exist backup with input name and counter
-  while ((entry = readdir(dp)) != NULL)
-  {
-    if (strstr(entry->d_name, inputFilename) != NULL && strstr(entry->d_name, ".bck") != NULL)
-    {
-      int fileCounter;
-      if (sscanf(entry->d_name + strlen(inputFilename) + 1, "%d", &fileCounter) == 1)
-      {
-        if (fileCounter >= counter)
-        {
-          counter = fileCounter + 1;
-        }
-      }
-    }
-  }
-
-  closedir(dp);
-  // input%-%.bkp (dp->d_name)
-  strcpy(bckFilename, folderName);    // jobs/
-  strcat(bckFilename, inputFilename); // jobs/input
-  strcat(bckFilename, "-");           // jobs/-
-
-  char counterStr[MAX_STRING_SIZE];
-  sprintf(counterStr, "%d", counter);
-  strcat(bckFilename, counterStr); // jobs/-1
-  strcat(bckFilename, ".bck");     // jobs/-1.bck
-
-  printf("Backup filename: %s\n", bckFilename);
-  return bckFilename;
-}
-
-int kvs_backup(int input_fd, char *input_filename, DIR *dp)
+int kvs_backup(char *input_filename, DIR *dp)
 {
   size_t len = strlen(input_filename);
   char bckFilename[len + MAX_STRING_SIZE];
-  generateBCKFilename(input_filename, bckFilename, dp);
-  printf("input_fd: %d\n", input_fd);
 
-  printf("Init backup sleep\n");
-  sleep(5);
-  printf("End backup sleep\n");
+  // * Generate backup filename
+  int counter = 1;
+  char temp_bckFilename[len + MAX_STRING_SIZE];
+  strcpy(temp_bckFilename, input_filename);
+  temp_bckFilename[strlen(temp_bckFilename) - 4] = '\0'; // Remove file extension
 
+  // Read all files in the directory
+  struct dirent *entry;
+  while ((entry = readdir(dp)) != NULL)
+  {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+    {
+      continue;
+    }
+
+    // Skip all .job and .out files
+    if (strstr(entry->d_name, ".job") != NULL || strstr(entry->d_name, ".out") != NULL)
+    {
+      continue;
+    }
+
+    // Check if backup file already exists in the format temp_bckFilename-<number>.bck
+    char test_backup_filename[len + MAX_STRING_SIZE];
+    sprintf(test_backup_filename, "%s-%d.bck", temp_bckFilename, counter);
+    if (access(test_backup_filename, F_OK) == 0)
+    {
+      counter++;
+    }
+    else
+    {
+      break;
+    }
+  }
+
+  // Generate backup filename
+  sprintf(bckFilename, "%s-%d.bck", temp_bckFilename, counter);
+  printf("Backup filename: %s\n", bckFilename);
+
+  // * Generate backup file
   generateBackup(bckFilename);
 
   return 0;
