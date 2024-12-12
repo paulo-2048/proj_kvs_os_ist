@@ -70,6 +70,10 @@ int executeCommand(int fdOut, int fdIn, char *inputFilename)
         fprintf(stderr, "Invalid command. See HELP for usage\n");
       }
 
+      // Order alfabetically the keys
+      qsort(keys, num_pairs, MAX_STRING_SIZE, (int (*)(const void *, const void *))strcmp);
+      
+
       if (kvs_read(num_pairs, keys, fdOut))
       {
         fprintf(stderr, "Failed to read pair\n");

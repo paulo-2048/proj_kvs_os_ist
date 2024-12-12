@@ -95,12 +95,13 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
 
   write(fdOut, "[", 1);
 
+  struct kvs_lock_read_t kvs_lock_read;
+  pthread_mutex_init(&kvs_lock_read.mutex, NULL);
+
   for (size_t i = 0; i < num_pairs; i++)
   {
-
-    struct kvs_lock_read_t kvs_lock_read;
     strcpy(kvs_lock_read.key, keys[i]);
-    pthread_mutex_init(&kvs_lock_read.mutex, NULL);
+
     pthread_mutex_lock(&kvs_lock_read.mutex);
     char *result = read_pair(kvs_table, keys[i]);
     if (result == NULL)
@@ -119,8 +120,9 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
     }
     free(result);
     pthread_mutex_unlock(&kvs_lock_read.mutex);
-    pthread_mutex_destroy(&kvs_lock_read.mutex);
   }
+
+  pthread_mutex_destroy(&kvs_lock_read.mutex);
 
   write(fdOut, "]\n", 2);
 

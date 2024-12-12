@@ -22,7 +22,8 @@ run: kvs
 	@./kvs jobs 2 2
 
 clean:
-	find . -type f \( -name '*.o' -o -name 'kvs' -o -name '*.bck' -o -name '*.out' \) -delete
+	find . -type f \( -name '*.o' -o -name 'kvs' \) -delete
+	find ./jobs -type f \( -name '*.bck' -o -name '*.out' \) -delete
 
 format:
 	@which clang-format >/dev/null 2>&1 || echo "Please install clang-format to run this command"
