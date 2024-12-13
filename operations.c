@@ -14,29 +14,7 @@
 
 static struct HashTable *kvs_table = NULL;
 
-// pthread_mutex_t thread_mutex_op_read = PTHREAD_MUTEX_INITIALIZER;
-// pthread_mutex_t thread_mutex_op_write = PTHREAD_MUTEX_INITIALIZER;
-
-pthread_mutex_t kvs_lock_show = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t kvs_lock_delete = PTHREAD_MUTEX_INITIALIZER;
-
-struct kvs_lock_write_t
-{
-  char key[MAX_STRING_SIZE];
-  pthread_mutex_t mutex;
-};
-
-struct kvs_lock_read_t
-{
-  char key[MAX_STRING_SIZE];
-  pthread_mutex_t mutex;
-};
-
-struct kvs_lock_write_t kvs_lock_write = {
-    .mutex = PTHREAD_MUTEX_INITIALIZER};
-
-struct kvs_lock_read_t kvs_lock_read = {
-    .mutex = PTHREAD_MUTEX_INITIALIZER};
+pthread_rwlock_t kvs_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 static struct timespec delay_to_timespec(unsigned int delay_ms)
 {
@@ -75,18 +53,20 @@ int kvs_write(size_t num_pairs, char keys[][MAX_STRING_SIZE], char values[][MAX_
     return 1;
   }
 
+  pthread_rwlock_wrlock(&kvs_lock);
+  printf("Locked with write in kvs_write\n");
+
   for (size_t i = 0; i < num_pairs; i++)
   {
-    strcpy(kvs_lock_write.key, keys[i]);
-    pthread_mutex_lock(&kvs_lock_write.mutex);
+
     if (write_pair(kvs_table, keys[i], values[i]) != 0)
     {
       fprintf(stderr, "Failed to write keypair (%s,%s)\n", keys[i], values[i]);
     }
-    pthread_mutex_unlock(&kvs_lock_write.mutex);
   }
 
-  // pthread_mutex_destroy(&kvs_lock_write.mutex);
+  printf("Unlocked in kvs_write\n");
+  pthread_rwlock_unlock(&kvs_lock);
 
   return 0;
 }
@@ -101,12 +81,11 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
 
   write(fdOut, "[", 1);
 
+  pthread_rwlock_rdlock(&kvs_lock);
+  printf("Locked with read in kvs_read\n");
+
   for (size_t i = 0; i < num_pairs; i++)
   {
-
-    strcpy(kvs_lock_read.key, keys[i]);
-
-    pthread_mutex_lock(&kvs_lock_read.mutex);
     char *result = read_pair(kvs_table, keys[i]);
     if (result == NULL)
     {
@@ -123,10 +102,10 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
       write(fdOut, ")", 1);
     }
     free(result);
-    pthread_mutex_unlock(&kvs_lock_read.mutex);
-
-    // pthread_mutex_destroy(&kvs_lock_read.mutex);
   }
+
+  printf("Unlocked\n");
+  pthread_rwlock_unlock(&kvs_lock);
 
   write(fdOut, "]\n", 2);
 
@@ -142,7 +121,9 @@ int kvs_delete(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
   }
   int aux = 0;
 
-  pthread_mutex_lock(&kvs_lock_delete);
+  pthread_rwlock_wrlock(&kvs_lock);
+  printf("Locked with write in kvs_delete\n");
+
   for (size_t i = 0; i < num_pairs; i++)
   {
     if (delete_pair(kvs_table, keys[i]) != 0)
@@ -159,7 +140,9 @@ int kvs_delete(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
       write(fdOut, ",KVSMISSING)", 12);
     }
   }
-  pthread_mutex_unlock(&kvs_lock_delete);
+
+  printf("Unlocked\n");
+  pthread_rwlock_unlock(&kvs_lock);
   if (aux)
   {
 
@@ -172,7 +155,8 @@ int kvs_delete(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
 void kvs_show(int fdOut)
 {
 
-  pthread_mutex_lock(&kvs_lock_show);
+  pthread_rwlock_rdlock(&kvs_lock);
+  printf("Locked with read in kvs_show\n");
   for (int i = 0; i < TABLE_SIZE; i++)
   {
     KeyNode *keyNode = kvs_table->table[i];
@@ -186,8 +170,10 @@ void kvs_show(int fdOut)
       write(fdOut, ")\n", 2);
       keyNode = keyNode->next;
     }
+
+    printf("Unlocked\n");
   }
-  pthread_mutex_unlock(&kvs_lock_show);
+  pthread_rwlock_unlock(&kvs_lock);
 }
 
 void generateBackup(char *bckFilename)
@@ -204,6 +190,10 @@ void generateBackup(char *bckFilename)
 }
 int kvs_backup(char *input_filename)
 {
+
+  pthread_rwlock_wrlock(&kvs_lock);
+  printf("Locked with read in kvs_backup\n");
+
   size_t len = strlen(input_filename);
   char bckFilename[len + MAX_STRING_SIZE];
 
@@ -230,13 +220,15 @@ int kvs_backup(char *input_filename)
     }
   }
 
-
   // Generate backup filename
   sprintf(bckFilename, "%s-%d.bck", temp_bckFilename, counter);
   printf("Backup filename: %s\n", bckFilename);
 
   // * Generate backup file
   generateBackup(bckFilename);
+
+  printf("Unlocked in Backup\n");
+  pthread_rwlock_unlock(&kvs_lock);
 
   return 0;
 }
