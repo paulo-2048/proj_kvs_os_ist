@@ -5,14 +5,17 @@
 
 #include <stddef.h>
 
-typedef struct KeyNode {
+typedef struct KeyNode
+{
     char *key;
     char *value;
     struct KeyNode *next;
 } KeyNode;
 
-typedef struct HashTable {
+typedef struct HashTable
+{
     KeyNode *table[TABLE_SIZE];
+    // pthread_mutex_t mutex[TABLE_SIZE];
 } HashTable;
 
 /// Creates a new event hash table.
@@ -30,7 +33,7 @@ int write_pair(HashTable *ht, const char *key, const char *value);
 /// @param ht Hash table to delete from.
 /// @param key Key of the pair to be deleted.
 /// @return 0 if the node was deleted successfully, 1 otherwise.
-char* read_pair(HashTable *ht, const char *key);
+char *read_pair(HashTable *ht, const char *key);
 
 /// Appends a new node to the list.
 /// @param list Event list to be modified.
@@ -42,5 +45,4 @@ int delete_pair(HashTable *ht, const char *key);
 /// @param ht Hash table to be deleted.
 void free_table(HashTable *ht);
 
-
-#endif  // KVS_H
+#endif // KVS_H

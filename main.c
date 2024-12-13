@@ -70,9 +70,8 @@ int executeCommand(int fdOut, int fdIn, char *inputFilename)
         fprintf(stderr, "Invalid command. See HELP for usage\n");
       }
 
-      // Order alfabetically the keys
       qsort(keys, num_pairs, MAX_STRING_SIZE, (int (*)(const void *, const void *))strcmp);
-      
+
 
       if (kvs_read(num_pairs, keys, fdOut))
       {
@@ -113,7 +112,7 @@ int executeCommand(int fdOut, int fdIn, char *inputFilename)
 
     case CMD_BACKUP:
 
-      pthread_mutex_lock(&backup_mutex);
+      
 
       while (concurrent_backups >= MAX_CONCURRENT_BACKUPS)
       {
@@ -123,6 +122,8 @@ int executeCommand(int fdOut, int fdIn, char *inputFilename)
         concurrent_backups--;
         printf("Backup complete.\n");
       }
+
+      pthread_mutex_lock(&backup_mutex);
 
       int pid = fork();
       if (pid == 0)

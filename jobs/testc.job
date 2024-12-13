@@ -7,5 +7,4 @@ READ [chave2]
 WRITE [(chave2,valor-exemplo2)(umaChave,umValor)]
 BACKUP
 DELETE [c1,chaveAleatoria]
-WAIT 1000
 SHOW

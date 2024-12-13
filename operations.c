@@ -17,6 +17,9 @@ static struct HashTable *kvs_table = NULL;
 // pthread_mutex_t thread_mutex_op_read = PTHREAD_MUTEX_INITIALIZER;
 // pthread_mutex_t thread_mutex_op_write = PTHREAD_MUTEX_INITIALIZER;
 
+pthread_mutex_t kvs_lock_show = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t kvs_lock_delete = PTHREAD_MUTEX_INITIALIZER;
+
 struct kvs_lock_write_t
 {
   char key[MAX_STRING_SIZE];
@@ -28,6 +31,12 @@ struct kvs_lock_read_t
   char key[MAX_STRING_SIZE];
   pthread_mutex_t mutex;
 };
+
+struct kvs_lock_write_t kvs_lock_write = {
+    .mutex = PTHREAD_MUTEX_INITIALIZER};
+
+struct kvs_lock_read_t kvs_lock_read = {
+    .mutex = PTHREAD_MUTEX_INITIALIZER};
 
 static struct timespec delay_to_timespec(unsigned int delay_ms)
 {
@@ -66,9 +75,6 @@ int kvs_write(size_t num_pairs, char keys[][MAX_STRING_SIZE], char values[][MAX_
     return 1;
   }
 
-  struct kvs_lock_write_t kvs_lock_write;
-  pthread_mutex_init(&kvs_lock_write.mutex, NULL);
-
   for (size_t i = 0; i < num_pairs; i++)
   {
     strcpy(kvs_lock_write.key, keys[i]);
@@ -80,7 +86,7 @@ int kvs_write(size_t num_pairs, char keys[][MAX_STRING_SIZE], char values[][MAX_
     pthread_mutex_unlock(&kvs_lock_write.mutex);
   }
 
-  pthread_mutex_destroy(&kvs_lock_write.mutex);
+  // pthread_mutex_destroy(&kvs_lock_write.mutex);
 
   return 0;
 }
@@ -95,11 +101,9 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
 
   write(fdOut, "[", 1);
 
-  struct kvs_lock_read_t kvs_lock_read;
-  pthread_mutex_init(&kvs_lock_read.mutex, NULL);
-
   for (size_t i = 0; i < num_pairs; i++)
   {
+
     strcpy(kvs_lock_read.key, keys[i]);
 
     pthread_mutex_lock(&kvs_lock_read.mutex);
@@ -120,9 +124,9 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
     }
     free(result);
     pthread_mutex_unlock(&kvs_lock_read.mutex);
-  }
 
-  pthread_mutex_destroy(&kvs_lock_read.mutex);
+    // pthread_mutex_destroy(&kvs_lock_read.mutex);
+  }
 
   write(fdOut, "]\n", 2);
 
@@ -138,6 +142,7 @@ int kvs_delete(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
   }
   int aux = 0;
 
+  pthread_mutex_lock(&kvs_lock_delete);
   for (size_t i = 0; i < num_pairs; i++)
   {
     if (delete_pair(kvs_table, keys[i]) != 0)
@@ -154,6 +159,7 @@ int kvs_delete(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
       write(fdOut, ",KVSMISSING)", 12);
     }
   }
+  pthread_mutex_unlock(&kvs_lock_delete);
   if (aux)
   {
 
@@ -165,6 +171,8 @@ int kvs_delete(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fdOut)
 
 void kvs_show(int fdOut)
 {
+
+  pthread_mutex_lock(&kvs_lock_show);
   for (int i = 0; i < TABLE_SIZE; i++)
   {
     KeyNode *keyNode = kvs_table->table[i];
@@ -179,6 +187,7 @@ void kvs_show(int fdOut)
       keyNode = keyNode->next;
     }
   }
+  pthread_mutex_unlock(&kvs_lock_show);
 }
 
 void generateBackup(char *bckFilename)
