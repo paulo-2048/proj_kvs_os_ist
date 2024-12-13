@@ -39,9 +39,8 @@ void kvs_show(int fdOut);
 /// Creates a backup of the KVS state and stores it in the correspondent
 /// backup file
 /// @param inputFilename Name of the input file.
-/// @param dirp Directory pointer.
 /// @return 0 if the backup was successful, 1 otherwise.
-int kvs_backup(const char *inputFilename, DIR *dirp);
+int kvs_backup(const char *inputFilename);
 
 /// Waits for the last backup to be called.
 void kvs_wait_backup();

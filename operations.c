@@ -202,7 +202,7 @@ void generateBackup(char *bckFilename)
   kvs_show(fdOutput);
   close(fdOutput);
 }
-int kvs_backup(char *input_filename, DIR *dp)
+int kvs_backup(char *input_filename)
 {
   size_t len = strlen(input_filename);
   char bckFilename[len + MAX_STRING_SIZE];
@@ -214,24 +214,13 @@ int kvs_backup(char *input_filename, DIR *dp)
   temp_bckFilename[strlen(temp_bckFilename) - 4] = '\0'; // Remove file extension
 
   // Read all files in the directory
-  struct dirent *entry;
-  while ((entry = readdir(dp)) != NULL)
+  // struct dirent *entry;
+
+  // quantity of files in the directory
+  while (1)
   {
-    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-    {
-      continue;
-    }
-
-    // Skip all .job and .out files
-    if (strstr(entry->d_name, ".job") != NULL || strstr(entry->d_name, ".out") != NULL)
-    {
-      continue;
-    }
-
-    // Check if backup file already exists in the format temp_bckFilename-<number>.bck
-    char test_backup_filename[len + MAX_STRING_SIZE];
-    sprintf(test_backup_filename, "%s-%d.bck", temp_bckFilename, counter);
-    if (access(test_backup_filename, F_OK) == 0)
+    sprintf(bckFilename, "%s-%d.bck", temp_bckFilename, counter);
+    if (access(bckFilename, F_OK) == 0)
     {
       counter++;
     }
@@ -240,6 +229,7 @@ int kvs_backup(char *input_filename, DIR *dp)
       break;
     }
   }
+
 
   // Generate backup filename
   sprintf(bckFilename, "%s-%d.bck", temp_bckFilename, counter);

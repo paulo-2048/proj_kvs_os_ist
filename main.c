@@ -130,7 +130,7 @@ int executeCommand(int fdOut, int fdIn, char *inputFilename)
       {
         pthread_mutex_unlock(&backup_mutex);
 
-        int backup_result = kvs_backup(inputFilename, dirp);
+        int backup_result = kvs_backup(inputFilename);
 
         if (backup_result != 0)
         {
